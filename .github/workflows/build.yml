@@ -1,0 +1,71 @@
+name: Komari Build 
+
+on:
+  push:
+    branches:
+      - main
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    env:
+      CGO_ENABLED: 1 
+
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      - name: Setup Go
+        uses: actions/setup-go@v5
+        with:
+          go-version: '1.22'
+
+      - name: Setup Node.js and npm
+        uses: actions/setup-node@v4
+        with:
+          node-version: '20'
+
+      - name: Clone komari-web
+        run: git clone https://github.com/komari-monitor/komari-web
+
+      - name: Build komari-web
+        run: |
+          cd komari-web
+          npm install
+          npm run build
+
+      - name: Clone komari
+        run: git clone https://github.com/komari-monitor/komari
+
+      - name: Copy komari-web build to komari public
+        run: |
+          cp -r komari-web/dist komari/public/
+
+      - name: Install ARM64 Cross-compilation Tools
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y gcc-aarch64-linux-gnu
+
+      - name: ARM Build
+        run: |
+          cd komari
+          export CC=/usr/bin/aarch64-linux-gnu-gcc
+          GOOS=linux GOARCH=arm64 go build -o komari_arm64 -ldflags '-extldflags "-static"'
+
+      - name: AMD64 Build
+        run: |
+          cd komari
+          GOOS=linux GOARCH=amd64 go build -o komari_amd64 -ldflags '-extldflags "-static"'
+
+      - name: Release
+        uses: softprops/action-gh-release@v1
+        with:
+          tag_name: release-${{ github.run_number }}
+          name: Komari Backend & Web Release ${{ github.run_number }}
+          body: |
+            Build From https://github.com/komari-monitor/komari
+          files: |
+            komari/komari_arm64
+            komari/komari_amd64
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
